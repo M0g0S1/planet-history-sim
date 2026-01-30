@@ -8,34 +8,30 @@
 </head>
 <body>
   <div id="mainMenu">
-    <div class="stars"></div>
+  <div class="menu-scene">
+    <svg class="orbital" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="g1" x1="0" x2="1">
+          <stop offset="0%" stop-color="#ff6b6b"/>
+          <stop offset="100%" stop-color="#ffcdc4"/>
+        </linearGradient>
+      </defs>
+      <circle cx="300" cy="300" r="80" class="planet-core" />
+      <g class="rings">
+        <ellipse cx="300" cy="300" rx="220" ry="40" class="ring ring-1" />
+        <ellipse cx="300" cy="300" rx="170" ry="30" class="ring ring-2" />
+      </g>
+    </svg>
+
     <div class="menu-content">
-      <div class="title-container">
-        <div class="title-glow"></div>
-        <h1 class="game-title">PLANET HISTORY</h1>
-        <h1 class="game-title game-title-sub">SIMULATOR</h1>
-      </div>
-      <p class="game-subtitle">Command | Observe | Conquer</p>
-      <div class="menu-stats">
-        <div class="stat-item">
-          <span class="stat-label">SIMULATIONS RUN</span>
-          <span class="stat-value">∞</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">CIVILIZATIONS TRACKED</span>
-          <span class="stat-value">∞</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">YEARS SIMULATED</span>
-          <span class="stat-value">∞</span>
-        </div>
-      </div>
+      <h1 class="game-title">PLANET HISTORY</h1>
       <button id="playBtn" class="menu-btn">
         <span class="btn-text">INITIALIZE SIMULATION</span>
-        <span class="btn-subtext">Press to begin</span>
       </button>
+      <p class="menu-credit">Procedural worldgen • Single-player</p>
     </div>
   </div>
+</div>
   <div id="gameView" style="display: none;">
     <div id="progressUI">
       <div class="progress-content">
