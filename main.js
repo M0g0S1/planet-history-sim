@@ -44,12 +44,33 @@ function initCanvases() {
 function resizeCanvases() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  
-  mapCanvas.style.width = w + 'px';
-  mapCanvas.style.height = h + 'px';
-  cloudsCanvas.style.width = w + 'px';
-  cloudsCanvas.style.height = h + 'px';
-  
+
+  // Compute scale to fill screen while preserving aspect ratio
+  const mapAspect = MAP_WIDTH / MAP_HEIGHT;
+  const screenAspect = w / h;
+
+  let displayWidth, displayHeight;
+  if (screenAspect > mapAspect) {
+    // Screen is wider than map
+    displayHeight = h;
+    displayWidth = displayHeight * mapAspect;
+  } else {
+    // Screen is taller than map
+    displayWidth = w;
+    displayHeight = displayWidth / mapAspect;
+  }
+
+  mapCanvas.style.width = displayWidth + 'px';
+  mapCanvas.style.height = displayHeight + 'px';
+  cloudsCanvas.style.width = displayWidth + 'px';
+  cloudsCanvas.style.height = displayHeight + 'px';
+
+  // Optional: center the canvases horizontally/vertically
+  mapCanvas.style.marginLeft = ((w - displayWidth) / 2) + 'px';
+  mapCanvas.style.marginTop = ((h - displayHeight) / 2) + 'px';
+  cloudsCanvas.style.marginLeft = ((w - displayWidth) / 2) + 'px';
+  cloudsCanvas.style.marginTop = ((h - displayHeight) / 2) + 'px';
+
   // Redraw if planet exists
   if (planetData) {
     renderCamera();
