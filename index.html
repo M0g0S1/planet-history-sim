@@ -1,15 +1,57 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Planet History Simulation</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <title>Planet History Sim — Map Generator</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>🌍 Planet History Simulation</h1>
-  <p>If you can see this, GitHub Pages is working.</p>
+  <div id="ui">
+    <h1>Planet History Simulator — Map Generator</h1>
 
-  <canvas id="map"></canvas>
+    <div class="controls">
+      <label>Preset:
+        <select id="preset">
+          <option value="dev">Dev Mode (512 × 256 — fast)</option>
+          <option value="planet">Planet Mode (2048 × 1024 — heavy)</option>
+        </select>
+      </label>
+
+      <label>Seed:
+        <input id="seedInput" type="text" placeholder="leave blank for random" />
+      </label>
+
+      <label>Sea level:
+        <input id="seaLevel" type="range" min="0" max="1" step="0.01" value="0.55" />
+        <span id="seaVal">0.55</span>
+      </label>
+
+      <label>
+        <input id="erosionToggle" type="checkbox" checked />
+        Apply erosion smoothing
+      </label>
+
+      <label>
+        <input id="riversToggle" type="checkbox" checked />
+        Generate rivers
+      </label>
+
+      <button id="generateBtn">Generate Map</button>
+      <button id="randomSeedBtn">Randomize Seed</button>
+    </div>
+
+    <div id="progressWrap">
+      <div id="progressBar"></div>
+      <div id="progressText">Idle</div>
+    </div>
+
+    <p class="hint">Tip: Planet Mode is heavy. Use Dev Mode to iterate quickly. You can increase resolution after you're happy with parameters.</p>
+  </div>
+
+  <div id="canvasWrap">
+    <canvas id="mapCanvas"></canvas>
+  </div>
 
   <script src="main.js"></script>
 </body>
