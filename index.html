@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Main Menu -->
   <div id="mainMenu">
     <div class="menu-content">
       <h1 class="game-title">PLANET HISTORY SIMULATOR</h1>
@@ -15,10 +14,7 @@
       <button id="playBtn" class="menu-btn">PLAY</button>
     </div>
   </div>
-
-  <!-- Game View -->
   <div id="gameView" style="display: none;">
-    <!-- Progress UI -->
     <div id="progressUI">
       <div class="progress-content">
         <h2>Generating Planet</h2>
@@ -28,14 +24,8 @@
         <div id="progressText">Initializing...</div>
       </div>
     </div>
-
-    <!-- Canvas for planet -->
     <canvas id="mapCanvas"></canvas>
-    
-    <!-- Moving clouds layer -->
     <canvas id="cloudsCanvas"></canvas>
-
-    <!-- Game UI (appears after generation) -->
     <div id="gameUI" style="display: none;">
       <div class="ui-top-left">
         <div class="info-box">
@@ -43,11 +33,9 @@
           <div class="world-stats" id="worldStats">Year 0 | Tribes: 0</div>
         </div>
       </div>
-      
       <div class="ui-top-right">
         <button class="settings-btn" id="settingsBtn">⚙</button>
       </div>
-      
       <div class="ui-bottom">
         <div class="time-controls">
           <button class="time-btn" data-speed="0" title="Pause">⏸</button>
@@ -58,8 +46,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Settings Panel -->
     <div id="settingsPanel" style="display: none;">
       <div class="settings-content">
         <h3>Settings</h3>
@@ -71,7 +57,6 @@
       </div>
     </div>
   </div>
-
   <script src="main.js"></script>
 </body>
 </html>
