@@ -1,106 +1,114 @@
-/* Simple full-screen layout: dark-blue background, centered map */
-:root{
-  --bg:#02102a;
-  --panel:#071428dd;
-  --accent:#63b3ff;
-  --muted:#9fb9d6;
+/* Full-screen planet view with minimal UI overlay */
+:root {
+  --bg: #020815;
+  --panel: rgba(8, 16, 30, 0.92);
+  --accent: #4a9eff;
+  --text: #e8f2ff;
 }
-html,body{
-  height:100%;
-  margin:0;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  background: radial-gradient(ellipse at bottom, #00182b 0%, var(--bg) 50%, #000918 100%);
-  color:#e6f3ff;
-}
-#ui{
-  position: absolute;
-  left: 18px;
-  top: 18px;
-  width: 380px;
-  padding: 14px;
-  background: linear-gradient(180deg, rgba(8,20,36,0.85), rgba(6,14,26,0.8));
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-  z-index: 20;
-}
-#ui h1{
-  margin: 0 0 10px 0;
-  font-size: 18px;
-  letter-spacing: 0.4px;
-}
-.controls label{
-  display:block;
-  margin:8px 0;
-  font-size:13px;
-  color:var(--muted);
-}
-.controls input[type="text"]{
-  width: 100%;
-  padding:6px 8px;
-  margin-left:6px;
-  border-radius:6px;
-  border:1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.02);
-  color: #e6f3ff;
-}
-.controls select{
-  padding:6px 8px;
-  border-radius:6px;
-  background: rgba(255,255,255,0.02);
-  color: #e6f3ff;
-  border:1px solid rgba(255,255,255,0.06);
-}
-.controls button{
-  margin-top:10px;
-  padding:8px 10px;
-  border-radius:8px;
-  background:linear-gradient(180deg,var(--accent),#2a9cff);
-  border:none;
-  color:#001428;
-  font-weight:700;
-  cursor:pointer;
-}
-#progressWrap{
-  margin-top:10px;
-  background: rgba(255,255,255,0.03);
-  padding:6px;
-  border-radius:8px;
-}
-#progressBar{
-  width:0%;
-  height:8px;
-  background: linear-gradient(90deg,var(--accent),#bfe7ff);
-  border-radius:6px;
-  transition: width 0.2s linear;
-}
-#progressText{
-  margin-top:6px;
-  font-size:12px;
-  color:var(--muted);
-}
-.hint{ font-size:12px; color:#9fb9d6; margin-top:8px; }
 
-#canvasWrap{
-  position: absolute;
-  right: 18px;
-  top: 18px;
-  bottom: 18px;
-  left: 420px;
-  background: radial-gradient(circle at center, rgba(2,24,45,0.7), rgba(0,10,20,0.85));
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  background: #000;
+}
+
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #081420;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+#ui {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 280px;
+  padding: 16px;
+  background: var(--panel);
+  backdrop-filter: blur(12px);
   border-radius: 12px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
-canvas{
-  max-width: calc(100% - 60px);
-  max-height: calc(100% - 60px);
-  border: 2px solid rgba(255,255,255,0.03);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.6);
-  background: #081827;
+
+h1 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+  letter-spacing: 0.3px;
 }
-@media(max-width:900px){
-  #ui{ position: static; width: auto; margin:8px; }
-  #canvasWrap{ left: 8px; top: auto; bottom: 8px; right: 8px; }
+
+button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--accent), #2d7acc);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s;
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(74, 158, 255, 0.4);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+#progressWrap {
+  margin-top: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 2px;
+}
+
+#progressBar {
+  height: 6px;
+  background: linear-gradient(90deg, var(--accent), #6eb8ff);
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+#progressText {
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(232, 242, 255, 0.7);
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  #ui {
+    width: calc(100% - 40px);
+    right: 20px;
+  }
 }
