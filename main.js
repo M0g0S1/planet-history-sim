@@ -519,14 +519,24 @@ function renderClouds() {
   
   const cloudX = (camera.x + cloudOffset) % MAP_WIDTH;
   const sy = camera.y;
-  const sw = Math.min(viewWidth, MAP_WIDTH - cloudX);
+  
+  const firstPartWidth = Math.min(viewWidth, MAP_WIDTH - cloudX);
   const sh = Math.min(viewHeight, MAP_HEIGHT - sy);
   
   cloudsCtx.drawImage(
     baseCloudTexture,
-    cloudX, sy, sw, sh,
-    0, 0, MAP_WIDTH * (sw / viewWidth), MAP_HEIGHT
+    cloudX, sy, firstPartWidth, sh,
+    0, 0, MAP_WIDTH * (firstPartWidth / viewWidth), MAP_HEIGHT
   );
+  
+  if (firstPartWidth < viewWidth) {
+    const remainingWidth = viewWidth - firstPartWidth;
+    cloudsCtx.drawImage(
+      baseCloudTexture,
+      0, sy, remainingWidth, sh,
+      MAP_WIDTH * (firstPartWidth / viewWidth), 0, MAP_WIDTH * (remainingWidth / viewWidth), MAP_HEIGHT
+    );
+  }
 }
 
 mapCanvas.addEventListener('mousedown', (e) => {
@@ -583,6 +593,10 @@ mapCanvas.addEventListener('wheel', (e) => {
   const screenWidth = window.innerWidth;
   const screenHeight = window.innerHeight;
   
+  const minZoomX = screenWidth / MAP_WIDTH;
+  const minZoomY = screenHeight / MAP_HEIGHT;
+  const minZoom = Math.max(minZoomX, minZoomY);
+  
   const worldX = camera.x + (mouseX / screenWidth) * (screenWidth / camera.zoom);
   const worldY = camera.y + (mouseY / screenHeight) * (screenHeight / camera.zoom);
   
@@ -590,7 +604,7 @@ mapCanvas.addEventListener('wheel', (e) => {
   const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
   
   const oldZoom = camera.zoom;
-  const newZoom = Math.max(camera.minZoom, Math.min(camera.maxZoom, camera.zoom + delta));
+  const newZoom = Math.max(minZoom, Math.min(camera.maxZoom, camera.zoom + delta));
   
   camera.targetZoom = newZoom;
   camera.zoom = newZoom;
