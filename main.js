@@ -428,7 +428,7 @@ async function renderPlanetTexture(height, temperature, moisture) {
         
         if (h > 0.55) {
           const mountainFactor = Math.min(1, (h - 0.55) / 0.45);
-          const grayBase = 135 + h * 70;
+          const grayBase = 120 + h * 50;
           r = Math.floor(r * (1 - mountainFactor) + grayBase * mountainFactor);
           g = Math.floor(g * (1 - mountainFactor) + grayBase * mountainFactor);
           b = Math.floor(b * (1 - mountainFactor) + grayBase * mountainFactor);
@@ -436,9 +436,9 @@ async function renderPlanetTexture(height, temperature, moisture) {
         
         if (h > 0.75 && t < 0.15) {
           const snowFactor = Math.min(1, (h - 0.75) / 0.25);
-          r = Math.floor(r * (1 - snowFactor) + 248 * snowFactor);
-          g = Math.floor(g * (1 - snowFactor) + 250 * snowFactor);
-          b = Math.floor(b * (1 - snowFactor) + 252 * snowFactor);
+          r = Math.floor(r * (1 - snowFactor) + 245 * snowFactor);
+          g = Math.floor(g * (1 - snowFactor) + 247 * snowFactor);
+          b = Math.floor(b * (1 - snowFactor) + 250 * snowFactor);
         }
       }
       
@@ -478,7 +478,11 @@ async function generateClouds(rng, noise) {
       const nx = x / MAP_WIDTH;
       const ny = y / MAP_HEIGHT;
       
-      const cloudDensity = noise.fbm(nx * 8 + 1000, ny * 8 + 1000, 4, 0.6, 2.1);
+      const angle = nx * Math.PI * 2;
+      const cloudX = Math.cos(angle) * 1.2732;
+      const cloudY = Math.sin(angle) * 1.2732;
+      
+      const cloudDensity = noise.fbm(cloudX + 1000, cloudY + 1000, ny * 8, 4, 0.6, 2.1);
       
       const lat = Math.abs(ny * 2 - 1);
       const cloudBoost = 1 - lat * 0.4;
