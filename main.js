@@ -30,6 +30,34 @@ let cloudSpeed = 0.2;
 let worldRng = null;
 let worldNoise = null;
 
+const planetPrefixes = [
+  'Terra', 'Gaia', 'Kepler', 'Proxima', 'Trappist', 'Nova', 'Aurora', 'Celestia',
+  'Olympus', 'Elysium', 'Arcadia', 'Avalon', 'Eden', 'Valhalla', 'Asgard', 'Midgard',
+  'Atlantis', 'Thera', 'Harmonia', 'Concordia', 'Serenity', 'Tranquility', 'Verdant',
+  'Emerald', 'Sapphire', 'Azure', 'Crimson', 'Golden', 'Silver', 'Crystal'
+];
+
+const planetSuffixes = [
+  'Prime', 'Major', 'Minor', 'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon',
+  'Centauri', 'Draconis', 'Aquarii', 'Orionis', 'Lyrae', 'Cygni', 'Phoenicis',
+  'Novus', 'Secundus', 'Tertius', 'Quartus', 'Quintus'
+];
+
+function generatePlanetName(rng) {
+  const useNumber = rng.next() > 0.4;
+  
+  if (useNumber) {
+    const prefix = planetPrefixes[Math.floor(rng.next() * planetPrefixes.length)];
+    const number = Math.floor(rng.next() * 9999) + 1;
+    const letter = String.fromCharCode(97 + Math.floor(rng.next() * 26));
+    return `${prefix}-${number}${letter}`;
+  } else {
+    const prefix = planetPrefixes[Math.floor(rng.next() * planetPrefixes.length)];
+    const suffix = planetSuffixes[Math.floor(rng.next() * planetSuffixes.length)];
+    return `${prefix} ${suffix}`;
+  }
+}
+
 function initCanvases() {
   mapCanvas.width = MAP_WIDTH;
   mapCanvas.height = MAP_HEIGHT;
@@ -360,6 +388,9 @@ async function generatePlanet() {
   
   planetData = { height, temperature, moisture, seed };
   
+  const planetName = generatePlanetName(rng);
+  document.getElementById('worldName').textContent = planetName;
+  
   setProgress(1, 'Complete!');
   return planetData;
 }
@@ -426,19 +457,19 @@ async function renderPlanetTexture(height, temperature, moisture) {
           b = Math.floor(45 + t * 25);
         }
         
-        if (h > 0.55) {
-          const mountainFactor = Math.min(1, (h - 0.55) / 0.45);
-          const grayBase = 120 + h * 50;
+        if (h > 0.6) {
+          const mountainFactor = Math.min(1, (h - 0.6) / 0.4);
+          const grayBase = 100 + h * 40;
           r = Math.floor(r * (1 - mountainFactor) + grayBase * mountainFactor);
           g = Math.floor(g * (1 - mountainFactor) + grayBase * mountainFactor);
           b = Math.floor(b * (1 - mountainFactor) + grayBase * mountainFactor);
         }
         
-        if (h > 0.75 && t < 0.15) {
-          const snowFactor = Math.min(1, (h - 0.75) / 0.25);
-          r = Math.floor(r * (1 - snowFactor) + 245 * snowFactor);
-          g = Math.floor(g * (1 - snowFactor) + 247 * snowFactor);
-          b = Math.floor(b * (1 - snowFactor) + 250 * snowFactor);
+        if (h > 0.8 && t < 0.1) {
+          const snowFactor = Math.min(1, (h - 0.8) / 0.2);
+          r = Math.floor(r * (1 - snowFactor) + 240 * snowFactor);
+          g = Math.floor(g * (1 - snowFactor) + 242 * snowFactor);
+          b = Math.floor(b * (1 - snowFactor) + 245 * snowFactor);
         }
       }
       
@@ -478,11 +509,10 @@ async function generateClouds(rng, noise) {
       const nx = x / MAP_WIDTH;
       const ny = y / MAP_HEIGHT;
       
-      const angle = nx * Math.PI * 2;
-      const cloudX = Math.cos(angle) * 1.2732;
-      const cloudY = Math.sin(angle) * 1.2732;
+      const s = Math.sin(nx * Math.PI * 2);
+      const c = Math.cos(nx * Math.PI * 2);
       
-      const cloudDensity = noise.fbm(cloudX + 1000, cloudY + 1000, ny * 8, 4, 0.6, 2.1);
+      const cloudDensity = noise.fbm(c * 1.5 + 1000, s * 1.5 + 1000, ny * 8 + 2000, 4, 0.6, 2.1);
       
       const lat = Math.abs(ny * 2 - 1);
       const cloudBoost = 1 - lat * 0.4;
