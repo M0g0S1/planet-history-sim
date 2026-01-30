@@ -25,6 +25,7 @@ let planetData = null;
 let basePlanetTexture = null;
 let baseCloudTexture = null;
 let showClouds = true;
+let cloudOpacity = 0.5;
 let cloudSpeed = 0.2;
 let worldRng = null;
 let worldNoise = null;
@@ -537,26 +538,37 @@ function renderClouds() {
   const viewWidth = screenWidth / camera.zoom;
   const viewHeight = screenHeight / camera.zoom;
   
-  const cloudX = (camera.x + cloudOffset) % MAP_WIDTH;
+  const wrappedCloudOffset = ((cloudOffset % MAP_WIDTH) + MAP_WIDTH) % MAP_WIDTH;
+  const cloudX = (camera.x + wrappedCloudOffset) % MAP_WIDTH;
   const sy = camera.y;
-  
-  const firstPartWidth = Math.min(viewWidth, MAP_WIDTH - cloudX);
   const sh = Math.min(viewHeight, MAP_HEIGHT - sy);
   
-  cloudsCtx.drawImage(
-    baseCloudTexture,
-    cloudX, sy, firstPartWidth, sh,
-    0, 0, MAP_WIDTH * (firstPartWidth / viewWidth), MAP_HEIGHT
-  );
+  cloudsCtx.globalAlpha = cloudOpacity;
   
-  if (firstPartWidth < viewWidth) {
-    const remainingWidth = viewWidth - firstPartWidth;
+  if (cloudX + viewWidth <= MAP_WIDTH) {
     cloudsCtx.drawImage(
       baseCloudTexture,
-      0, sy, remainingWidth, sh,
-      MAP_WIDTH * (firstPartWidth / viewWidth), 0, MAP_WIDTH * (remainingWidth / viewWidth), MAP_HEIGHT
+      cloudX, sy, viewWidth, sh,
+      0, 0, MAP_WIDTH, MAP_HEIGHT
+    );
+  } else {
+    const firstPartWidth = MAP_WIDTH - cloudX;
+    const secondPartWidth = viewWidth - firstPartWidth;
+    
+    cloudsCtx.drawImage(
+      baseCloudTexture,
+      cloudX, sy, firstPartWidth, sh,
+      0, 0, MAP_WIDTH * (firstPartWidth / viewWidth), MAP_HEIGHT
+    );
+    
+    cloudsCtx.drawImage(
+      baseCloudTexture,
+      0, sy, secondPartWidth, sh,
+      MAP_WIDTH * (firstPartWidth / viewWidth), 0, MAP_WIDTH * (secondPartWidth / viewWidth), MAP_HEIGHT
     );
   }
+  
+  cloudsCtx.globalAlpha = 1.0;
 }
 
 mapCanvas.addEventListener('mousedown', (e) => {
@@ -700,6 +712,14 @@ document.getElementById('showClouds').addEventListener('change', (e) => {
   if (!showClouds) {
     cloudsCtx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
   } else {
+    renderCamera();
+  }
+});
+
+document.getElementById('cloudOpacity').addEventListener('input', (e) => {
+  cloudOpacity = parseFloat(e.target.value);
+  document.getElementById('cloudOpacityValue').textContent = cloudOpacity.toFixed(2);
+  if (showClouds) {
     renderCamera();
   }
 });
