@@ -1,6 +1,3 @@
-// Planet History Simulator - Main Game Engine
-// Realistic planet generation with HOI4-style camera system
-
 // ===== CANVAS SETUP =====
 const mapCanvas = document.getElementById('mapCanvas');
 const mapCtx = mapCanvas.getContext('2d', { alpha: false });
@@ -378,7 +375,13 @@ async function generatePlanet() {
 
 // ===== RENDER PLANET TO TEXTURE =====
 async function renderPlanetTexture(height, temperature, moisture) {
-  const imageData = mapCtx.createImageData(MAP_WIDTH, MAP_HEIGHT);
+  // Create a separate canvas for the base texture
+  const textureCanvas = document.createElement('canvas');
+  textureCanvas.width = MAP_WIDTH;
+  textureCanvas.height = MAP_HEIGHT;
+  const textureCtx = textureCanvas.getContext('2d', { alpha: false });
+  
+  const imageData = textureCtx.createImageData(MAP_WIDTH, MAP_HEIGHT);
   const data = imageData.data;
   
   for (let y = 0; y < MAP_HEIGHT; y++) {
@@ -473,12 +476,24 @@ async function renderPlanetTexture(height, temperature, moisture) {
     }
   }
   
-  mapCtx.putImageData(imageData, 0, 0);
+  textureCtx.putImageData(imageData, 0, 0);
+  
+  // Store the base texture
+  basePlanetTexture = textureCanvas;
+  
+  // Draw initial view to display canvas
+  mapCtx.drawImage(textureCanvas, 0, 0);
 }
 
 // ===== GENERATE CLOUD LAYER =====
 async function generateClouds(rng, noise) {
-  const imageData = cloudsCtx.createImageData(MAP_WIDTH, MAP_HEIGHT);
+  // Create a separate canvas for the cloud texture
+  const cloudTextureCanvas = document.createElement('canvas');
+  cloudTextureCanvas.width = MAP_WIDTH;
+  cloudTextureCanvas.height = MAP_HEIGHT;
+  const cloudTextureCtx = cloudTextureCanvas.getContext('2d', { alpha: true });
+  
+  const imageData = cloudTextureCtx.createImageData(MAP_WIDTH, MAP_HEIGHT);
   const data = imageData.data;
   
   for (let y = 0; y < MAP_HEIGHT; y++) {
@@ -507,19 +522,25 @@ async function generateClouds(rng, noise) {
     }
   }
   
-  cloudsCtx.putImageData(imageData, 0, 0);
+  cloudTextureCtx.putImageData(imageData, 0, 0);
+  
+  // Store the base cloud texture
+  baseCloudTexture = cloudTextureCanvas;
+  
+  // Draw initial clouds to display canvas
+  cloudsCtx.drawImage(cloudTextureCanvas, 0, 0);
 }
+
+// Store the base planet texture separately
+let basePlanetTexture = null;
+let baseCloudTexture = null;
 
 // ===== CAMERA SYSTEM (HOI4-style) =====
 function renderCamera() {
+  if (!basePlanetTexture) return;
+  
   const screenWidth = window.innerWidth;
   const screenHeight = window.innerHeight;
-  
-  // Clear and set up temporary canvas for camera view
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = screenWidth;
-  tempCanvas.height = screenHeight;
-  const tempCtx = tempCanvas.getContext('2d');
   
   // Calculate zoom
   const zoomedWidth = MAP_WIDTH * camera.zoom;
@@ -532,55 +553,74 @@ function renderCamera() {
   // X wraps infinitely
   camera.x = ((camera.x % MAP_WIDTH) + MAP_WIDTH) % MAP_WIDTH;
   
-  // Draw map with wrapping
-  const drawX = -camera.x * camera.zoom;
+  // Clear main canvas
+  mapCtx.fillStyle = '#081420';
+  mapCtx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
+  
+  // Calculate what portion of the base texture to show
+  const sourceX = camera.x;
+  const sourceY = camera.y;
+  const sourceWidth = Math.min(MAP_WIDTH, screenWidth / camera.zoom);
+  const sourceHeight = Math.min(MAP_HEIGHT, screenHeight / camera.zoom);
   
   // Draw main view
-  tempCtx.drawImage(mapCanvas, drawX, -camera.y * camera.zoom, zoomedWidth, zoomedHeight);
+  mapCtx.drawImage(
+    basePlanetTexture,
+    sourceX, sourceY, sourceWidth, sourceHeight,
+    0, 0, MAP_WIDTH, MAP_HEIGHT
+  );
   
-  // Draw wrapped portion (for seamless horizontal wrapping)
-  if (drawX > -zoomedWidth) {
-    tempCtx.drawImage(mapCanvas, drawX - zoomedWidth, -camera.y * camera.zoom, zoomedWidth, zoomedHeight);
+  // Handle horizontal wrapping
+  if (sourceX + sourceWidth > MAP_WIDTH) {
+    const wrapWidth = (sourceX + sourceWidth) - MAP_WIDTH;
+    mapCtx.drawImage(
+      basePlanetTexture,
+      0, sourceY, wrapWidth, sourceHeight,
+      (sourceWidth - wrapWidth) * (MAP_WIDTH / sourceWidth), 0, 
+      wrapWidth * (MAP_WIDTH / sourceWidth), MAP_HEIGHT
+    );
   }
-  if (drawX < 0) {
-    tempCtx.drawImage(mapCanvas, drawX + zoomedWidth, -camera.y * camera.zoom, zoomedWidth, zoomedHeight);
-  }
   
-  // Copy to main canvas
-  mapCtx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-  mapCtx.drawImage(tempCanvas, 0, 0, screenWidth, screenHeight, 0, 0, MAP_WIDTH, MAP_HEIGHT);
-  
-  // Render clouds with offset
+  // Render clouds
   renderClouds();
 }
 
 function renderClouds() {
+  if (!baseCloudTexture) return;
+  
   const screenWidth = window.innerWidth;
   const screenHeight = window.innerHeight;
   
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = screenWidth;
-  tempCanvas.height = screenHeight;
-  const tempCtx = tempCanvas.getContext('2d');
+  // Clear clouds canvas
+  cloudsCtx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
   
   const zoomedWidth = MAP_WIDTH * camera.zoom;
   const zoomedHeight = MAP_HEIGHT * camera.zoom;
   
+  const sourceWidth = Math.min(MAP_WIDTH, screenWidth / camera.zoom);
+  const sourceHeight = Math.min(MAP_HEIGHT, screenHeight / camera.zoom);
+  
   // Cloud offset for animation
-  const drawX = -(camera.x + cloudOffset) * camera.zoom;
+  const cloudX = (camera.x + cloudOffset) % MAP_WIDTH;
+  const sourceY = camera.y;
   
-  tempCtx.drawImage(cloudsCanvas, drawX, -camera.y * camera.zoom, zoomedWidth, zoomedHeight);
+  // Draw main clouds
+  cloudsCtx.drawImage(
+    baseCloudTexture,
+    cloudX, sourceY, sourceWidth, sourceHeight,
+    0, 0, MAP_WIDTH, MAP_HEIGHT
+  );
   
-  // Wrapping
-  if (drawX > -zoomedWidth) {
-    tempCtx.drawImage(cloudsCanvas, drawX - zoomedWidth, -camera.y * camera.zoom, zoomedWidth, zoomedHeight);
+  // Handle wrapping
+  if (cloudX + sourceWidth > MAP_WIDTH) {
+    const wrapWidth = (cloudX + sourceWidth) - MAP_WIDTH;
+    cloudsCtx.drawImage(
+      baseCloudTexture,
+      0, sourceY, wrapWidth, sourceHeight,
+      (sourceWidth - wrapWidth) * (MAP_WIDTH / sourceWidth), 0,
+      wrapWidth * (MAP_WIDTH / sourceWidth), MAP_HEIGHT
+    );
   }
-  if (drawX < 0) {
-    tempCtx.drawImage(cloudsCanvas, drawX + zoomedWidth, -camera.y * camera.zoom, zoomedWidth, zoomedHeight);
-  }
-  
-  cloudsCtx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-  cloudsCtx.drawImage(tempCanvas, 0, 0, screenWidth, screenHeight, 0, 0, MAP_WIDTH, MAP_HEIGHT);
 }
 
 // ===== CAMERA CONTROLS =====
