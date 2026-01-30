@@ -1,7 +1,5 @@
 const mapCanvas = document.getElementById('mapCanvas');
 const mapCtx = mapCanvas.getContext('2d', { alpha: false });
-const cloudsCanvas = document.getElementById('cloudsCanvas');
-const cloudsCtx = cloudsCanvas.getContext('2d', { alpha: true });
 
 const MAP_WIDTH = 2048;
 const MAP_HEIGHT = 1024;
@@ -20,13 +18,8 @@ const camera = {
   dragStartCamY: 0
 };
 
-let cloudOffset = 0;
 let planetData = null;
 let basePlanetTexture = null;
-let baseCloudTexture = null;
-let showClouds = true;
-let cloudOpacity = 0.5;
-let cloudSpeed = 0.2;
 let worldRng = null;
 let worldNoise = null;
 
@@ -61,8 +54,6 @@ function generatePlanetName(rng) {
 function initCanvases() {
   mapCanvas.width = MAP_WIDTH;
   mapCanvas.height = MAP_HEIGHT;
-  cloudsCanvas.width = MAP_WIDTH;
-  cloudsCanvas.height = MAP_HEIGHT;
   
   const screenWidth = window.innerWidth;
   const screenHeight = window.innerHeight;
@@ -83,8 +74,6 @@ function resizeCanvases() {
 
   mapCanvas.style.width = w + 'px';
   mapCanvas.style.height = h + 'px';
-  cloudsCanvas.style.width = w + 'px';
-  cloudsCanvas.style.height = h + 'px';
 
   const minZoomX = w / MAP_WIDTH;
   const minZoomY = h / MAP_HEIGHT;
@@ -383,9 +372,6 @@ async function generatePlanet() {
   setProgress(0.80, 'Rendering planet...');
   await renderPlanetTexture(height, temperature, moisture);
   
-  setProgress(0.92, 'Generating clouds...');
-  await generateClouds(rng, noise);
-  
   planetData = { height, temperature, moisture, seed };
   
   const planetName = generatePlanetName(rng);
@@ -457,19 +443,17 @@ async function renderPlanetTexture(height, temperature, moisture) {
           b = Math.floor(45 + t * 25);
         }
         
-        if (h > 0.6) {
-          const mountainFactor = Math.min(1, (h - 0.6) / 0.4);
-          const grayBase = 100 + h * 40;
-          r = Math.floor(r * (1 - mountainFactor) + grayBase * mountainFactor);
-          g = Math.floor(g * (1 - mountainFactor) + grayBase * mountainFactor);
-          b = Math.floor(b * (1 - mountainFactor) + grayBase * mountainFactor);
+        if (h > 0.65) {
+          const baseGray = 85 + h * 35;
+          r = Math.floor(baseGray);
+          g = Math.floor(baseGray);
+          b = Math.floor(baseGray);
         }
         
-        if (h > 0.8 && t < 0.1) {
-          const snowFactor = Math.min(1, (h - 0.8) / 0.2);
-          r = Math.floor(r * (1 - snowFactor) + 240 * snowFactor);
-          g = Math.floor(g * (1 - snowFactor) + 242 * snowFactor);
-          b = Math.floor(b * (1 - snowFactor) + 245 * snowFactor);
+        if (h > 0.85 && t < 0.05) {
+          r = 245;
+          g = 248;
+          b = 252;
         }
       }
       
@@ -555,10 +539,6 @@ function renderCamera() {
     camera.x, camera.y, viewWidth, viewHeight,
     0, 0, MAP_WIDTH, MAP_HEIGHT
   );
-  
-  if (showClouds) {
-    renderClouds();
-  }
 }
 
 function renderClouds() {
@@ -683,23 +663,6 @@ mapCanvas.addEventListener('wheel', (e) => {
 
 mapCanvas.style.cursor = 'grab';
 
-function animateClouds() {
-  cloudOffset += cloudSpeed;
-
-  if (cloudOffset > MAP_WIDTH + 200) {
-    cloudOffset = -200;
-    if (worldRng && worldNoise) {
-      generateClouds(worldRng, worldNoise);
-    }
-  }
-
-  if (planetData) {
-    renderCamera();
-  }
-  
-  requestAnimationFrame(animateClouds);
-}
-
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -718,7 +681,6 @@ document.getElementById('playBtn').addEventListener('click', async () => {
     document.getElementById('gameUI').style.display = 'block';
     
     renderCamera();
-    animateClouds();
     
   } catch (err) {
     console.error(err);
@@ -739,23 +701,6 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
 
 document.getElementById('closeSettings').addEventListener('click', () => {
   document.getElementById('settingsPanel').style.display = 'none';
-});
-
-document.getElementById('showClouds').addEventListener('change', (e) => {
-  showClouds = e.target.checked;
-  if (!showClouds) {
-    cloudsCtx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-  } else {
-    renderCamera();
-  }
-});
-
-document.getElementById('cloudOpacity').addEventListener('input', (e) => {
-  cloudOpacity = parseFloat(e.target.value);
-  document.getElementById('cloudOpacityValue').textContent = cloudOpacity.toFixed(2);
-  if (showClouds) {
-    renderCamera();
-  }
 });
 
 document.getElementById('settingsPanel').addEventListener('click', (e) => {
