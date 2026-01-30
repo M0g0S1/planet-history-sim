@@ -337,7 +337,7 @@ function generateHotspots(rng, numHotspots = 6) {
     hotspots.push({
       x: rng.next() * MAP_WIDTH,
       y: rng.next() * MAP_HEIGHT,
-      strength: rng.range(0.15, 0.35)
+      strength: rng.range(0.12, 0.22)
     });
   }
   return hotspots;
@@ -371,7 +371,7 @@ async function generatePlanet() {
   const { boundaries, boundaryType } = detectPlateBoundaries(plateMap, plates);
   
   setProgress(0.20, 'Placing volcanic hotspots...');
-  const hotspots = generateHotspots(rng, Math.floor(rng.range(4, 8)));
+  const hotspots = generateHotspots(rng, Math.floor(rng.range(3, 6)));
   
   // STEP 2: Base elevation from plate type
   setProgress(0.25, 'Setting base plate elevations...');
@@ -383,14 +383,52 @@ async function generatePlanet() {
     }
   }
   
-  // STEP 3: Apply tectonic forces at boundaries
-  setProgress(0.30, 'Simulating tectonic collisions...');
+  // STEP 3: Apply base continental noise (blend tectonics with natural terrain)
+  setProgress(0.30, 'Forming continents...');
+  for (let y = 0; y < MAP_HEIGHT; y++) {
+    for (let x = 0; x < MAP_WIDTH; x++) {
+      const i = idx(x, y);
+      const nx = x / MAP_WIDTH;
+      const ny = y / MAP_HEIGHT;
+      
+      const lat = Math.abs(ny * 2 - 1);
+      const latWeight = 1 - Math.pow(lat, 1.5) * 0.3;
+      
+      // Continental scale noise
+      const continentalScale = 2.2;
+      const continental = noise.fbm(
+        nx * continentalScale, 
+        ny * continentalScale, 
+        5, 
+        0.55, 
+        2.1,
+        0.5
+      );
+      
+      const plate = plates[plateMap[i]];
+      
+      // Blend plate type with noise
+      let baseHeight = plate.baseElevation * 0.4 + continental * 0.6;
+      baseHeight *= latWeight;
+      
+      height[i] = baseHeight;
+    }
+    
+    if (y % 50 === 0) {
+      setProgress(0.30 + (y / MAP_HEIGHT) * 0.10, `Continents: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
+      await sleep(0);
+    }
+  }
+  
+  // STEP 3B: Mark potential mountain zones at convergent boundaries
+  setProgress(0.40, 'Simulating tectonic collisions...');
+  const mountainSeeds = new Float32Array(MAP_WIDTH * MAP_HEIGHT);
+  
   for (let y = 0; y < MAP_HEIGHT; y++) {
     for (let x = 0; x < MAP_WIDTH; x++) {
       const i = idx(x, y);
       
-      if (boundaries[i]) {
-        const bType = boundaryType[i];
+      if (boundaries[i] && boundaryType[i] === 1) { // Only convergent
         const myPlate = plates[plateMap[i]];
         
         // Find neighboring plate
@@ -409,83 +447,95 @@ async function generatePlanet() {
         }
         
         if (otherPlate) {
-          if (bType === 1) { // Convergent
-            if (myPlate.type === 'continental' && otherPlate.type === 'continental') {
-              // Continental collision → major mountain range
-              height[i] += rng.range(0.5, 0.85);
-            } else if (myPlate.type === 'continental' || otherPlate.type === 'continental') {
-              // Subduction → volcanic arc + mountains
-              height[i] += rng.range(0.3, 0.6);
-            } else {
-              // Ocean-ocean collision → island arc
-              height[i] += rng.range(0.15, 0.35);
-            }
-          } else if (bType === 2) { // Divergent
-            // Mid-ocean ridge or rift valley
-            if (myPlate.type === 'oceanic' && otherPlate.type === 'oceanic') {
-              height[i] += rng.range(0.08, 0.18); // ridge
-            } else {
-              height[i] -= rng.range(0.05, 0.15); // rift valley
-            }
-          } else if (bType === 3) { // Transform
-            // Fault lines - slight variation
-            height[i] += rng.range(-0.05, 0.08);
+          // Only add mountain seeds where it makes geological sense
+          if (myPlate.type === 'continental' && otherPlate.type === 'continental') {
+            // Continental collision → major mountain seed
+            mountainSeeds[i] = rng.range(0.25, 0.40);
+          } else if (myPlate.type === 'continental' || otherPlate.type === 'continental') {
+            // Subduction → moderate mountain seed
+            mountainSeeds[i] = rng.range(0.15, 0.28);
+          } else {
+            // Ocean-ocean → island arc seed
+            mountainSeeds[i] = rng.range(0.08, 0.18);
           }
         }
       }
     }
     
     if (y % 50 === 0) {
-      setProgress(0.30 + (y / MAP_HEIGHT) * 0.15, `Tectonics: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
+      setProgress(0.40 + (y / MAP_HEIGHT) * 0.05, `Collisions: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
       await sleep(0);
     }
   }
   
-  // STEP 4: Spread mountain ranges from boundaries
+  // STEP 4: Spread mountain ranges naturally using noise-guided growth
   setProgress(0.45, 'Building mountain ranges...');
-  const mountainSpread = new Float32Array(height);
   
-  for (let pass = 0; pass < 12; pass++) {
-    for (let y = 1; y < MAP_HEIGHT - 1; y++) {
-      for (let x = 0; x < MAP_WIDTH; x++) {
-        const i = idx(x, y);
+  // Use noise to guide mountain formation along tectonic zones
+  for (let y = 1; y < MAP_HEIGHT - 1; y++) {
+    for (let x = 0; x < MAP_WIDTH; x++) {
+      const i = idx(x, y);
+      const nx = x / MAP_WIDTH;
+      const ny = y / MAP_HEIGHT;
+      
+      if (mountainSeeds[i] > 0) {
+        // Use ridged noise for mountain shapes
+        const mountainScale = 6;
+        let ridgeNoise = noise.fbm(
+          nx * mountainScale + 300,
+          ny * mountainScale + 300,
+          4,
+          0.5,
+          2.2
+        );
         
-        if (boundaries[i] && boundaryType[i] === 1 && height[i] > 0.3) {
-          // Spread mountain influence to neighbors
-          const spread = height[i] * 0.18;
-          const decay = 0.85;
-          
-          const neighbors = [
-            idx((x - 1 + MAP_WIDTH) % MAP_WIDTH, y),
-            idx((x + 1) % MAP_WIDTH, y),
-            idx(x, y - 1),
-            idx(x, y + 1)
-          ];
-          
-          for (const ni of neighbors) {
-            if (height[ni] < height[i] && !boundaries[ni]) {
-              mountainSpread[ni] = Math.max(mountainSpread[ni], spread * decay);
-            }
-          }
+        // Create ridges (inverse abs makes peaks)
+        ridgeNoise = 1 - Math.abs(ridgeNoise);
+        
+        if (ridgeNoise > 0.4) {
+          const peakFactor = Math.pow((ridgeNoise - 0.4) / 0.6, 1.3);
+          height[i] += mountainSeeds[i] * peakFactor * 1.8;
+        } else {
+          // Gradual elevation around mountains
+          height[i] += mountainSeeds[i] * 0.5;
         }
       }
     }
     
-    // Apply spread
-    for (let i = 0; i < height.length; i++) {
-      if (mountainSpread[i] > 0) {
-        height[i] += mountainSpread[i];
-        mountainSpread[i] *= 0.7;
-      }
-    }
-    
-    if (pass % 3 === 0) {
-      setProgress(0.45 + (pass / 12) * 0.10, `Mountain ranges: ${Math.floor(pass / 12 * 100)}%`);
+    if (y % 60 === 0) {
+      setProgress(0.45 + (y / MAP_HEIGHT) * 0.10, `Mountains: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
       await sleep(0);
     }
   }
   
-  // STEP 5: Add hotspot volcanoes
+  // Smooth and spread mountain influence
+  const smoothed = new Float32Array(height);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let y = 1; y < MAP_HEIGHT - 1; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        const i = idx(x, y);
+        
+        if (height[i] > 0.2) {
+          const n1 = height[idx((x - 1 + MAP_WIDTH) % MAP_WIDTH, y)];
+          const n2 = height[idx((x + 1) % MAP_WIDTH, y)];
+          const n3 = height[idx(x, y - 1)];
+          const n4 = height[idx(x, y + 1)];
+          
+          smoothed[i] = (height[i] * 2 + n1 + n2 + n3 + n4) / 6;
+        } else {
+          smoothed[i] = height[i];
+        }
+      }
+    }
+    
+    for (let i = 0; i < height.length; i++) {
+      if (height[i] > 0.2) {
+        height[i] = smoothed[i];
+      }
+    }
+  }
+  
+  // STEP 5: Add hotspot volcanoes (more subtle)
   setProgress(0.55, 'Placing volcanic islands...');
   for (const hotspot of hotspots) {
     for (let y = 0; y < MAP_HEIGHT; y++) {
@@ -497,34 +547,50 @@ async function generatePlanet() {
         const dy = y - hotspot.y;
         
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const radius = 40;
+        const radius = 50;
         
         if (dist < radius) {
           const influence = (1 - dist / radius) * hotspot.strength;
-          height[i] += influence * influence; // squared for sharper peaks
+          const peak = influence * influence * 0.8; // Less extreme
+          height[i] += peak;
         }
       }
     }
   }
   
-  // STEP 6: Add noise detail (for texture, not structure)
-  setProgress(0.60, 'Adding surface detail...');
+  // STEP 6: Add terrain detail noise
+  setProgress(0.60, 'Adding terrain detail...');
   for (let y = 0; y < MAP_HEIGHT; y++) {
     for (let x = 0; x < MAP_WIDTH; x++) {
       const i = idx(x, y);
       const nx = x / MAP_WIDTH;
       const ny = y / MAP_HEIGHT;
       
-      // Fine detail noise
-      const detail = noise.fbm(
-        nx * 15 + 500,
-        ny * 15 + 500,
-        4,
-        0.5,
+      // Multi-scale terrain noise
+      const terrainScale = 8;
+      const terrain = noise.fbm(
+        nx * terrainScale + 50, 
+        ny * terrainScale + 50, 
+        5, 
+        0.6, 
         2.0
-      ) * 0.04;
+      );
       
-      height[i] += detail;
+      const detailScale = 20;
+      const detail = noise.fbm(
+        nx * detailScale + 200, 
+        ny * detailScale + 200, 
+        4, 
+        0.5, 
+        2.0
+      );
+      
+      // Blend noise based on existing elevation
+      if (height[i] > 0) {
+        height[i] += terrain * 0.12 + detail * 0.05;
+      } else {
+        height[i] += terrain * 0.04 + detail * 0.02;
+      }
     }
     
     if (y % 60 === 0) {
@@ -536,10 +602,10 @@ async function generatePlanet() {
   // STEP 7: Adjust sea level
   setProgress(0.65, 'Adjusting sea level...');
   const sorted = new Float32Array(height).sort();
-  const seaLevel = sorted[Math.floor(sorted.length * 0.58)];
+  const seaLevel = sorted[Math.floor(sorted.length * 0.60)];
   
   for (let i = 0; i < height.length; i++) {
-    height[i] = (height[i] - seaLevel) * 1.2;
+    height[i] = (height[i] - seaLevel) * 1.5;
   }
   
   // STEP 8: Temperature
