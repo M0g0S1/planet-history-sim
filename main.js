@@ -194,153 +194,322 @@ class PerlinNoise {
 }
 
 // ============================================
-// TECTONIC PLATE SYSTEM
+// RIVER GENERATION SYSTEM
 // ============================================
 
-class TectonicPlate {
-  constructor(id, centerX, centerY, type, velocityX, velocityY) {
+class River {
+  constructor(id) {
     this.id = id;
-    this.centerX = centerX;
-    this.centerY = centerY;
-    this.type = type; // 'continental' or 'oceanic'
-    this.velocityX = velocityX;
-    this.velocityY = velocityY;
-    this.baseElevation = type === 'continental' ? 0.15 : -0.05;
+    this.path = []; // Array of {x, y} points
+    this.strength = 0; // How big the river is (0-1)
   }
 }
 
-function generateTectonicPlates(rng, numPlates = 12) {
-  const plates = [];
-  
-  for (let i = 0; i < numPlates; i++) {
-    const x = rng.next() * MAP_WIDTH;
-    const y = rng.next() * MAP_HEIGHT;
-    
-    // More continental plates in temperate zones
-    const lat = Math.abs((y / MAP_HEIGHT) * 2 - 1);
-    const isContinental = (lat < 0.6 && rng.next() > 0.4) || rng.next() > 0.65;
-    const type = isContinental ? 'continental' : 'oceanic';
-    
-    // Random plate motion
-    const angle = rng.next() * Math.PI * 2;
-    const speed = rng.range(0.3, 1.2);
-    const vx = Math.cos(angle) * speed;
-    const vy = Math.sin(angle) * speed;
-    
-    plates.push(new TectonicPlate(i, x, y, type, vx, vy));
-  }
-  
-  return plates;
-}
-
-function assignPlatesToTiles(plates) {
-  const plateMap = new Uint8Array(MAP_WIDTH * MAP_HEIGHT);
-  
-  // Voronoi diagram: assign each pixel to nearest plate center
-  for (let y = 0; y < MAP_HEIGHT; y++) {
-    for (let x = 0; x < MAP_WIDTH; x++) {
-      const i = y * MAP_WIDTH + x;
-      
-      let minDist = Infinity;
-      let closestPlate = 0;
-      
-      for (let p = 0; p < plates.length; p++) {
-        const plate = plates[p];
-        
-        // Handle wrapping on X axis
-        let dx = Math.abs(x - plate.centerX);
-        if (dx > MAP_WIDTH / 2) dx = MAP_WIDTH - dx;
-        
-        const dy = y - plate.centerY;
-        const dist = dx * dx + dy * dy;
-        
-        if (dist < minDist) {
-          minDist = dist;
-          closestPlate = p;
-        }
-      }
-      
-      plateMap[i] = closestPlate;
-    }
-  }
-  
-  return plateMap;
-}
-
-function detectPlateBoundaries(plateMap, plates) {
-  const boundaries = new Uint8Array(MAP_WIDTH * MAP_HEIGHT);
-  const boundaryType = new Uint8Array(MAP_WIDTH * MAP_HEIGHT);
-  // 0 = interior, 1 = convergent, 2 = divergent, 3 = transform
+async function generateRivers(height, moisture, rng) {
+  const rivers = [];
+  const riverMap = new Uint8Array(MAP_WIDTH * MAP_HEIGHT); // Which river (if any) flows through each pixel
   
   const idx = (x, y) => {
-    x = (x + MAP_WIDTH) % MAP_WIDTH; // wrap X
-    y = Math.max(0, Math.min(MAP_HEIGHT - 1, y)); // clamp Y
+    x = (x + MAP_WIDTH) % MAP_WIDTH;
+    y = Math.max(0, Math.min(MAP_HEIGHT - 1, y));
     return y * MAP_WIDTH + x;
   };
   
-  for (let y = 1; y < MAP_HEIGHT - 1; y++) {
-    for (let x = 0; x < MAP_WIDTH; x++) {
+  // Find high elevation starting points for rivers
+  const numRivers = Math.floor(rng.range(80, 150));
+  const riverStarts = [];
+  
+  for (let attempt = 0; attempt < numRivers * 3; attempt++) {
+    const x = Math.floor(rng.next() * MAP_WIDTH);
+    const y = Math.floor(rng.next() * MAP_HEIGHT);
+    const i = idx(x, y);
+    
+    const h = height[i];
+    const m = moisture[i];
+    
+    // Rivers start in mountains, in wet regions
+    if (h > 0.3 && h < 0.9 && m > 0.4) {
+      riverStarts.push({ x, y, elevation: h });
+    }
+    
+    if (riverStarts.length >= numRivers) break;
+  }
+  
+  // Flow each river downhill
+  for (let r = 0; r < riverStarts.length; r++) {
+    const river = new River(r);
+    const start = riverStarts[r];
+    
+    let x = start.x;
+    let y = start.y;
+    let prevElev = start.elevation;
+    const maxLength = 200;
+    
+    for (let step = 0; step < maxLength; step++) {
       const i = idx(x, y);
-      const myPlate = plateMap[i];
+      const currentElev = height[i];
       
-      // Check neighbors
+      // Stop if we hit ocean
+      if (currentElev <= 0) {
+        river.path.push({ x, y });
+        break;
+      }
+      
+      // Stop if we hit another river (merge)
+      if (riverMap[i] > 0 && riverMap[i] !== r + 1) {
+        river.path.push({ x, y });
+        break;
+      }
+      
+      river.path.push({ x, y });
+      riverMap[i] = r + 1;
+      
+      // Find lowest neighbor
       const neighbors = [
-        plateMap[idx(x - 1, y)],
-        plateMap[idx(x + 1, y)],
-        plateMap[idx(x, y - 1)],
-        plateMap[idx(x, y + 1)]
+        { x: x - 1, y: y, elev: height[idx(x - 1, y)] },
+        { x: x + 1, y: y, elev: height[idx(x + 1, y)] },
+        { x: x, y: y - 1, elev: height[idx(x, y - 1)] },
+        { x: x, y: y + 1, elev: height[idx(x, y + 1)] }
       ];
       
-      const isDifferent = neighbors.some(n => n !== myPlate);
+      // Sort by elevation
+      neighbors.sort((a, b) => a.elev - b.elev);
       
-      if (isDifferent) {
-        boundaries[i] = 1;
-        
-        // Determine boundary type based on plate velocities
-        const otherPlate = neighbors.find(n => n !== myPlate);
-        if (otherPlate !== undefined) {
-          const p1 = plates[myPlate];
-          const p2 = plates[otherPlate];
+      // Flow downhill
+      let moved = false;
+      for (const n of neighbors) {
+        if (n.elev < currentElev) {
+          x = (n.x + MAP_WIDTH) % MAP_WIDTH;
+          y = Math.max(0, Math.min(MAP_HEIGHT - 1, n.y));
+          moved = true;
+          break;
+        }
+      }
+      
+      if (!moved) break; // Stuck in a local minimum
+      
+      prevElev = currentElev;
+    }
+    
+    // Calculate river strength based on length and tributaries
+    river.strength = Math.min(1, river.path.length / 100);
+    
+    if (river.path.length > 10) {
+      rivers.push(river);
+    }
+  }
+  
+  return rivers;
+}
+
+// ============================================
+// TILE SYSTEM
+// ============================================
+
+const TILE_WIDTH = 256;
+const TILE_HEIGHT = 128;
+
+class Tile {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    
+    // Geography
+    this.elevation = 0;
+    this.isLand = false;
+    this.distanceToCoast = 0;
+    this.riverPresence = 'none'; // none / minor / major
+    this.roughness = 0; // 0-1 (flat to mountains)
+    
+    // Climate
+    this.temperature = 0; // -1 to 1
+    this.rainfall = 0; // 0 to 1
+    this.seasonality = 0; // 0-1
+    this.climateZone = 'temperate'; // polar / temperate / tropical
+    
+    // Biome
+    this.biomeType = 'ocean';
+    
+    // Resources
+    this.foodPotential = 0; // 0-1
+    this.wood = 0; // 0-1
+    this.stone = 0; // 0-1
+    this.metals = 0; // 0-1
+    this.fertility = 0; // 0-1
+    
+    // Human factors
+    this.habitability = 0; // 0-1
+    this.populationCapacity = 0; // 0-1
+    this.diseaseRisk = 0; // 0-1
+    this.movementCost = 1.0; // multiplier for travel
+  }
+}
+
+function determineBiome(elevation, temperature, rainfall) {
+  if (elevation <= 0) return 'ocean';
+  
+  if (temperature < -0.5) return 'ice';
+  if (temperature < -0.2) return 'tundra';
+  
+  if (elevation > 0.7) return 'alpine';
+  
+  if (rainfall < 0.2) return 'desert';
+  if (rainfall < 0.4) {
+    if (temperature > 0.3) return 'savanna';
+    return 'grassland';
+  }
+  if (rainfall < 0.7) {
+    if (temperature > 0.4) return 'jungle';
+    return 'forest';
+  }
+  
+  if (temperature > 0.5) return 'jungle';
+  return 'forest';
+}
+
+async function generateTileSystem(height, temperature, moisture, rivers, rng) {
+  const tiles = [];
+  const tileGrid = [];
+  
+  const pixelsPerTileX = MAP_WIDTH / TILE_WIDTH;
+  const pixelsPerTileY = MAP_HEIGHT / TILE_HEIGHT;
+  
+  const idx = (x, y) => y * MAP_WIDTH + x;
+  
+  // Create tile grid
+  for (let ty = 0; ty < TILE_HEIGHT; ty++) {
+    const row = [];
+    for (let tx = 0; tx < TILE_WIDTH; tx++) {
+      const tile = new Tile(tx, ty);
+      
+      // Sample the center pixels of this tile region
+      const centerX = Math.floor(tx * pixelsPerTileX + pixelsPerTileX / 2);
+      const centerY = Math.floor(ty * pixelsPerTileY + pixelsPerTileY / 2);
+      
+      // Average values across the tile region
+      let sumElev = 0, sumTemp = 0, sumMoist = 0;
+      let numSamples = 0;
+      let minElev = Infinity, maxElev = -Infinity;
+      
+      for (let dy = 0; dy < pixelsPerTileY; dy += 2) {
+        for (let dx = 0; dx < pixelsPerTileX; dx += 2) {
+          const px = Math.floor(tx * pixelsPerTileX + dx);
+          const py = Math.floor(ty * pixelsPerTileY + dy);
+          if (px >= MAP_WIDTH || py >= MAP_HEIGHT) continue;
           
-          // Calculate relative velocity
-          const relVx = p2.velocityX - p1.velocityX;
-          const relVy = p2.velocityY - p1.velocityY;
-          
-          // Vector from plate center to boundary
-          const toX = x - p1.centerX;
-          const toY = y - p1.centerY;
-          const len = Math.sqrt(toX * toX + toY * toY);
-          const normX = len > 0 ? toX / len : 0;
-          const normY = len > 0 ? toY / len : 0;
-          
-          // Dot product to see if converging or diverging
-          const dot = relVx * normX + relVy * normY;
-          
-          if (dot > 0.3) {
-            boundaryType[i] = 2; // divergent
-          } else if (dot < -0.3) {
-            boundaryType[i] = 1; // convergent
-          } else {
-            boundaryType[i] = 3; // transform
+          const i = idx(px, py);
+          sumElev += height[i];
+          sumTemp += temperature[i];
+          sumMoist += moisture[i];
+          minElev = Math.min(minElev, height[i]);
+          maxElev = Math.max(maxElev, height[i]);
+          numSamples++;
+        }
+      }
+      
+      tile.elevation = sumElev / numSamples;
+      tile.temperature = sumTemp / numSamples;
+      tile.rainfall = sumMoist / numSamples;
+      tile.isLand = tile.elevation > 0;
+      tile.roughness = maxElev - minElev; // Terrain variance
+      
+      // Climate zone
+      const lat = Math.abs(ty / TILE_HEIGHT * 2 - 1);
+      if (lat > 0.7) tile.climateZone = 'polar';
+      else if (lat < 0.3) tile.climateZone = 'tropical';
+      else tile.climateZone = 'temperate';
+      
+      // Biome
+      tile.biomeType = determineBiome(tile.elevation, tile.temperature, tile.rainfall);
+      
+      // River presence
+      let riverStrength = 0;
+      for (const river of rivers) {
+        for (const point of river.path) {
+          const ptx = Math.floor(point.x / pixelsPerTileX);
+          const pty = Math.floor(point.y / pixelsPerTileY);
+          if (ptx === tx && pty === ty) {
+            riverStrength = Math.max(riverStrength, river.strength);
           }
         }
+      }
+      if (riverStrength > 0.5) tile.riverPresence = 'major';
+      else if (riverStrength > 0.2) tile.riverPresence = 'minor';
+      
+      // Resources
+      if (tile.isLand) {
+        tile.fertility = tile.rainfall * (1 - tile.roughness) * 0.7;
+        tile.foodPotential = tile.fertility * (tile.riverPresence === 'major' ? 1.5 : 1.0);
+        
+        tile.wood = (tile.biomeType === 'forest' || tile.biomeType === 'jungle') ? rng.range(0.6, 1.0) : rng.range(0, 0.3);
+        tile.stone = tile.roughness > 0.3 ? rng.range(0.5, 0.9) : rng.range(0.1, 0.4);
+        tile.metals = (tile.roughness > 0.4 && rng.next() > 0.7) ? rng.range(0.5, 1.0) : rng.range(0, 0.3);
+        
+        // Habitability
+        const tempScore = 1 - Math.abs(tile.temperature);
+        const moistScore = Math.min(1, tile.rainfall * 1.5);
+        tile.habitability = (tempScore + moistScore + (tile.riverPresence !== 'none' ? 0.3 : 0)) / 2.5;
+        
+        tile.populationCapacity = tile.habitability * tile.foodPotential;
+        
+        // Disease risk (hot + wet = disease)
+        if (tile.temperature > 0.3 && tile.rainfall > 0.6) {
+          tile.diseaseRisk = rng.range(0.5, 0.9);
+        } else {
+          tile.diseaseRisk = rng.range(0, 0.3);
+        }
+        
+        // Movement cost
+        tile.movementCost = 1.0;
+        if (tile.roughness > 0.5) tile.movementCost += 1.5;
+        if (tile.biomeType === 'jungle') tile.movementCost += 1.0;
+        if (tile.biomeType === 'desert') tile.movementCost += 0.5;
+        if (tile.biomeType === 'ice') tile.movementCost += 2.0;
+      }
+      
+      tiles.push(tile);
+      row.push(tile);
+    }
+    tileGrid.push(row);
+  }
+  
+  // Calculate distance to coast
+  for (let ty = 0; ty < TILE_HEIGHT; ty++) {
+    for (let tx = 0; tx < TILE_WIDTH; tx++) {
+      const tile = tileGrid[ty][tx];
+      
+      if (tile.isLand) {
+        let minDist = Infinity;
+        
+        // Search in expanding radius
+        for (let r = 1; r < 20; r++) {
+          let foundCoast = false;
+          
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              const nx = (tx + dx + TILE_WIDTH) % TILE_WIDTH;
+              const ny = ty + dy;
+              
+              if (ny < 0 || ny >= TILE_HEIGHT) continue;
+              
+              const neighbor = tileGrid[ny][nx];
+              if (!neighbor.isLand) {
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                minDist = Math.min(minDist, dist);
+                foundCoast = true;
+              }
+            }
+          }
+          
+          if (foundCoast) break;
+        }
+        
+        tile.distanceToCoast = minDist;
       }
     }
   }
   
-  return { boundaries, boundaryType };
-}
-
-function generateHotspots(rng, numHotspots = 6) {
-  const hotspots = [];
-  for (let i = 0; i < numHotspots; i++) {
-    hotspots.push({
-      x: rng.next() * MAP_WIDTH,
-      y: rng.next() * MAP_HEIGHT,
-      strength: rng.range(0.12, 0.22)
-    });
-  }
-  return hotspots;
+  return tiles;
 }
 
 async function generatePlanet() {
@@ -359,42 +528,18 @@ async function generatePlanet() {
   
   const idx = (x, y) => y * MAP_WIDTH + x;
   
-  // STEP 1: Generate tectonic plates
-  setProgress(0.05, 'Generating tectonic plates...');
-  const numPlates = Math.floor(rng.range(10, 16));
-  const plates = generateTectonicPlates(rng, numPlates);
+  setProgress(0.05, 'Forming continents...');
   
-  setProgress(0.10, 'Assigning plate territories...');
-  const plateMap = assignPlatesToTiles(plates);
-  
-  setProgress(0.15, 'Detecting plate boundaries...');
-  const { boundaries, boundaryType } = detectPlateBoundaries(plateMap, plates);
-  
-  setProgress(0.20, 'Placing volcanic hotspots...');
-  const hotspots = generateHotspots(rng, Math.floor(rng.range(3, 6)));
-  
-  // STEP 2: Base elevation from plate type
-  setProgress(0.25, 'Setting base plate elevations...');
   for (let y = 0; y < MAP_HEIGHT; y++) {
     for (let x = 0; x < MAP_WIDTH; x++) {
       const i = idx(x, y);
-      const plate = plates[plateMap[i]];
-      height[i] = plate.baseElevation;
-    }
-  }
-  
-  // STEP 3: Apply base continental noise (blend tectonics with natural terrain)
-  setProgress(0.30, 'Forming continents...');
-  for (let y = 0; y < MAP_HEIGHT; y++) {
-    for (let x = 0; x < MAP_WIDTH; x++) {
-      const i = idx(x, y);
+      
       const nx = x / MAP_WIDTH;
       const ny = y / MAP_HEIGHT;
       
       const lat = Math.abs(ny * 2 - 1);
       const latWeight = 1 - Math.pow(lat, 1.5) * 0.3;
       
-      // Continental scale noise
       const continentalScale = 2.2;
       const continental = noise.fbm(
         nx * continentalScale, 
@@ -405,169 +550,7 @@ async function generatePlanet() {
         0.5
       );
       
-      const plate = plates[plateMap[i]];
-      
-      // Blend plate type with noise
-      let baseHeight = plate.baseElevation * 0.4 + continental * 0.6;
-      baseHeight *= latWeight;
-      
-      height[i] = baseHeight;
-    }
-    
-    if (y % 50 === 0) {
-      setProgress(0.30 + (y / MAP_HEIGHT) * 0.10, `Continents: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
-      await sleep(0);
-    }
-  }
-  
-  // STEP 3B: Mark potential mountain zones at convergent boundaries
-  setProgress(0.40, 'Simulating tectonic collisions...');
-  const mountainSeeds = new Float32Array(MAP_WIDTH * MAP_HEIGHT);
-  
-  for (let y = 0; y < MAP_HEIGHT; y++) {
-    for (let x = 0; x < MAP_WIDTH; x++) {
-      const i = idx(x, y);
-      
-      if (boundaries[i] && boundaryType[i] === 1) { // Only convergent
-        const myPlate = plates[plateMap[i]];
-        
-        // Find neighboring plate
-        let otherPlate = null;
-        const neighbors = [
-          plateMap[idx((x - 1 + MAP_WIDTH) % MAP_WIDTH, y)],
-          plateMap[idx((x + 1) % MAP_WIDTH, y)],
-          plateMap[idx(x, Math.max(0, y - 1))],
-          plateMap[idx(x, Math.min(MAP_HEIGHT - 1, y + 1))]
-        ];
-        for (const nid of neighbors) {
-          if (nid !== plateMap[i]) {
-            otherPlate = plates[nid];
-            break;
-          }
-        }
-        
-        if (otherPlate) {
-          // Only add mountain seeds where it makes geological sense
-          if (myPlate.type === 'continental' && otherPlate.type === 'continental') {
-            // Continental collision → major mountain seed
-            mountainSeeds[i] = rng.range(0.25, 0.40);
-          } else if (myPlate.type === 'continental' || otherPlate.type === 'continental') {
-            // Subduction → moderate mountain seed
-            mountainSeeds[i] = rng.range(0.15, 0.28);
-          } else {
-            // Ocean-ocean → island arc seed
-            mountainSeeds[i] = rng.range(0.08, 0.18);
-          }
-        }
-      }
-    }
-    
-    if (y % 50 === 0) {
-      setProgress(0.40 + (y / MAP_HEIGHT) * 0.05, `Collisions: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
-      await sleep(0);
-    }
-  }
-  
-  // STEP 4: Spread mountain ranges naturally using noise-guided growth
-  setProgress(0.45, 'Building mountain ranges...');
-  
-  // Use noise to guide mountain formation along tectonic zones
-  for (let y = 1; y < MAP_HEIGHT - 1; y++) {
-    for (let x = 0; x < MAP_WIDTH; x++) {
-      const i = idx(x, y);
-      const nx = x / MAP_WIDTH;
-      const ny = y / MAP_HEIGHT;
-      
-      if (mountainSeeds[i] > 0) {
-        // Use ridged noise for mountain shapes
-        const mountainScale = 6;
-        let ridgeNoise = noise.fbm(
-          nx * mountainScale + 300,
-          ny * mountainScale + 300,
-          4,
-          0.5,
-          2.2
-        );
-        
-        // Create ridges (inverse abs makes peaks)
-        ridgeNoise = 1 - Math.abs(ridgeNoise);
-        
-        if (ridgeNoise > 0.4) {
-          const peakFactor = Math.pow((ridgeNoise - 0.4) / 0.6, 1.3);
-          height[i] += mountainSeeds[i] * peakFactor * 1.8;
-        } else {
-          // Gradual elevation around mountains
-          height[i] += mountainSeeds[i] * 0.5;
-        }
-      }
-    }
-    
-    if (y % 60 === 0) {
-      setProgress(0.45 + (y / MAP_HEIGHT) * 0.10, `Mountains: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
-      await sleep(0);
-    }
-  }
-  
-  // Smooth and spread mountain influence
-  const smoothed = new Float32Array(height);
-  for (let pass = 0; pass < 3; pass++) {
-    for (let y = 1; y < MAP_HEIGHT - 1; y++) {
-      for (let x = 0; x < MAP_WIDTH; x++) {
-        const i = idx(x, y);
-        
-        if (height[i] > 0.2) {
-          const n1 = height[idx((x - 1 + MAP_WIDTH) % MAP_WIDTH, y)];
-          const n2 = height[idx((x + 1) % MAP_WIDTH, y)];
-          const n3 = height[idx(x, y - 1)];
-          const n4 = height[idx(x, y + 1)];
-          
-          smoothed[i] = (height[i] * 2 + n1 + n2 + n3 + n4) / 6;
-        } else {
-          smoothed[i] = height[i];
-        }
-      }
-    }
-    
-    for (let i = 0; i < height.length; i++) {
-      if (height[i] > 0.2) {
-        height[i] = smoothed[i];
-      }
-    }
-  }
-  
-  // STEP 5: Add hotspot volcanoes (more subtle)
-  setProgress(0.55, 'Placing volcanic islands...');
-  for (const hotspot of hotspots) {
-    for (let y = 0; y < MAP_HEIGHT; y++) {
-      for (let x = 0; x < MAP_WIDTH; x++) {
-        const i = idx(x, y);
-        
-        let dx = Math.abs(x - hotspot.x);
-        if (dx > MAP_WIDTH / 2) dx = MAP_WIDTH - dx;
-        const dy = y - hotspot.y;
-        
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const radius = 50;
-        
-        if (dist < radius) {
-          const influence = (1 - dist / radius) * hotspot.strength;
-          const peak = influence * influence * 0.8; // Less extreme
-          height[i] += peak;
-        }
-      }
-    }
-  }
-  
-  // STEP 6: Add terrain detail noise
-  setProgress(0.60, 'Adding terrain detail...');
-  for (let y = 0; y < MAP_HEIGHT; y++) {
-    for (let x = 0; x < MAP_WIDTH; x++) {
-      const i = idx(x, y);
-      const nx = x / MAP_WIDTH;
-      const ny = y / MAP_HEIGHT;
-      
-      // Multi-scale terrain noise
-      const terrainScale = 8;
+      const terrainScale = 7;
       const terrain = noise.fbm(
         nx * terrainScale + 50, 
         ny * terrainScale + 50, 
@@ -585,31 +568,70 @@ async function generatePlanet() {
         2.0
       );
       
-      // Blend noise based on existing elevation
-      if (height[i] > 0) {
-        height[i] += terrain * 0.12 + detail * 0.05;
-      } else {
-        height[i] += terrain * 0.04 + detail * 0.02;
+      let elevation = continental * 0.60 + terrain * 0.28 + detail * 0.12;
+      elevation *= latWeight;
+      
+      if (lat < 0.35) {
+        elevation += 0.08 * (1 - lat / 0.35);
       }
+      
+      height[i] = elevation;
     }
     
-    if (y % 60 === 0) {
-      setProgress(0.60 + (y / MAP_HEIGHT) * 0.05, `Detail: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
+    if (y % 50 === 0) {
+      setProgress(0.05 + (y / MAP_HEIGHT) * 0.25, `Continents: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
       await sleep(0);
     }
   }
   
-  // STEP 7: Adjust sea level
-  setProgress(0.65, 'Adjusting sea level...');
+  setProgress(0.30, 'Adjusting sea level...');
+  
   const sorted = new Float32Array(height).sort();
   const seaLevel = sorted[Math.floor(sorted.length * 0.60)];
   
   for (let i = 0; i < height.length; i++) {
-    height[i] = (height[i] - seaLevel) * 1.5;
+    height[i] = (height[i] - seaLevel) * 2.8;
   }
   
-  // STEP 8: Temperature
-  setProgress(0.70, 'Calculating temperature...');
+  setProgress(0.35, 'Raising mountains...');
+
+  for (let y = 0; y < MAP_HEIGHT; y++) {
+    for (let x = 0; x < MAP_WIDTH; x++) {
+      const i = idx(x, y);
+      const nx = x / MAP_WIDTH;
+      const ny = y / MAP_HEIGHT;
+
+      if (height[i] > 0.08) {
+        const continentalMask = Math.max(0, Math.min(1,
+          (noise.fbm(nx * 0.6 + 900, ny * 0.6 + 900, 2, 0.6, 2.0) + 1) * 0.5
+        ));
+
+        const mountainScale = 5;
+        let mountainNoise = noise.fbm(
+          nx * mountainScale + 300,
+          ny * mountainScale + 300,
+          4,
+          0.5,
+          2.2
+        );
+
+        mountainNoise = 1 - Math.abs(mountainNoise);
+        if (mountainNoise > 0.35) {
+          const peakFactor = Math.pow((mountainNoise - 0.35) / (1 - 0.35), 1.6);
+          const amplitude = 0.18;
+          height[i] += peakFactor * amplitude * continentalMask;
+        }
+      }
+    }
+
+    if (y % 60 === 0) {
+      setProgress(0.35 + (y / MAP_HEIGHT) * 0.15, `Mountains: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
+      await sleep(0);
+    }
+  }
+  
+  setProgress(0.50, 'Calculating temperature...');
+  
   for (let y = 0; y < MAP_HEIGHT; y++) {
     const lat = Math.abs((y / MAP_HEIGHT) * 2 - 1);
     
@@ -632,13 +654,13 @@ async function generatePlanet() {
     }
     
     if (y % 60 === 0) {
-      setProgress(0.70 + (y / MAP_HEIGHT) * 0.10, `Temperature: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
+      setProgress(0.50 + (y / MAP_HEIGHT) * 0.10, `Temperature: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
       await sleep(0);
     }
   }
   
-  // STEP 9: Climate/Moisture
-  setProgress(0.80, 'Simulating climate...');
+  setProgress(0.60, 'Simulating climate...');
+  
   for (let y = 0; y < MAP_HEIGHT; y++) {
     for (let x = 0; x < MAP_WIDTH; x++) {
       const i = idx(x, y);
@@ -667,25 +689,31 @@ async function generatePlanet() {
     }
     
     if (y % 60 === 0) {
-      setProgress(0.80 + (y / MAP_HEIGHT) * 0.10, `Climate: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
+      setProgress(0.60 + (y / MAP_HEIGHT) * 0.10, `Climate: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
       await sleep(0);
     }
   }
   
-  setProgress(0.90, 'Rendering planet...');
-  await renderPlanetTexture(height, temperature, moisture);
+  setProgress(0.70, 'Generating rivers...');
+  const rivers = await generateRivers(height, moisture, rng);
   
-  planetData = { height, temperature, moisture, seed, plates, plateMap, boundaries, boundaryType };
+  setProgress(0.75, 'Creating tile system...');
+  const tiles = await generateTileSystem(height, temperature, moisture, rivers, rng);
+  
+  setProgress(0.80, 'Rendering planet...');
+  await renderPlanetTexture(height, temperature, moisture, rivers);
+  
+  planetData = { height, temperature, moisture, rivers, tiles, seed };
   
   const planetName = generatePlanetName(rng);
   document.getElementById('worldName').textContent = planetName;
-  document.getElementById('worldStats').textContent = `Tectonic Plates: ${plates.length}`;
+  document.getElementById('worldStats').textContent = `Tiles: ${tiles.length} | Rivers: ${rivers.length}`;
   
   setProgress(1, 'Complete!');
   return planetData;
 }
 
-async function renderPlanetTexture(height, temperature, moisture) {
+async function renderPlanetTexture(height, temperature, moisture, rivers) {
   const textureCanvas = document.createElement('canvas');
   textureCanvas.width = MAP_WIDTH;
   textureCanvas.height = MAP_HEIGHT;
@@ -768,12 +796,32 @@ async function renderPlanetTexture(height, temperature, moisture) {
     }
     
     if (y % 100 === 0) {
-      setProgress(0.90 + (y / MAP_HEIGHT) * 0.09, `Rendering: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
+      setProgress(0.80 + (y / MAP_HEIGHT) * 0.09, `Rendering: ${Math.floor(y / MAP_HEIGHT * 100)}%`);
       await sleep(0);
     }
   }
   
   textureCtx.putImageData(imageData, 0, 0);
+  
+  // Draw rivers on top
+  for (const river of rivers) {
+    if (river.path.length < 2) continue;
+    
+    const width = Math.max(1, river.strength * 2.5);
+    const alpha = Math.min(1, 0.6 + river.strength * 0.4);
+    
+    textureCtx.strokeStyle = `rgba(50, 120, 200, ${alpha})`;
+    textureCtx.lineWidth = width;
+    textureCtx.lineCap = 'round';
+    textureCtx.lineJoin = 'round';
+    
+    textureCtx.beginPath();
+    textureCtx.moveTo(river.path[0].x, river.path[0].y);
+    for (let i = 1; i < river.path.length; i++) {
+      textureCtx.lineTo(river.path[i].x, river.path[i].y);
+    }
+    textureCtx.stroke();
+  }
   
   basePlanetTexture = textureCanvas;
   
