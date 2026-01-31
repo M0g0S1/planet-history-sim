@@ -1328,6 +1328,9 @@ async function generatePlanet() {
   gameState.tribes = tribes;
   gameState.year = 0;
   
+  console.log(`Spawned ${tribes.length} tribes`);
+  console.log('Sample tribe:', tribes[0]);
+  
   setProgress(0.90, 'Rendering planet...');
   await renderPlanetTexture(height, temperature, moisture, rivers);
   
@@ -1338,6 +1341,10 @@ async function generatePlanet() {
   updateGameUI();
   
   setProgress(1, 'Complete!');
+  
+  // Render initial overlay to show tribes immediately
+  renderOverlay();
+  
   return planetData;
 }
 
@@ -1504,10 +1511,10 @@ function renderOverlay() {
     }
   }
   
-  // Draw tribe territories with fill
+  // Draw tribe territories with fill - SHOW ALL TRIBES (not just settled)
   for (const tribe of gameState.tribes) {
-    if (tribe.settled && tribe.territories.length > 0) {
-      overlayCtx.fillStyle = tribe.color + '45'; // More visible semi-transparent
+    if (tribe.territories.length > 0) {
+      overlayCtx.fillStyle = tribe.color + '60'; // Visible semi-transparent
       
       for (const terr of tribe.territories) {
         const px = terr.x * pixelsPerTileX;
@@ -1636,9 +1643,9 @@ function renderOverlay() {
     overlayCtx.fillText(country.name, centerX, centerY);
   }
   
-  // Draw tribe labels (smaller)
+  // Draw tribe labels - SHOW ALL TRIBES
   for (const tribe of gameState.tribes) {
-    if (tribe.settled && tribe.territories.length > 0) {
+    if (tribe.territories.length > 0) {
       let sumX = 0, sumY = 0;
       for (const terr of tribe.territories) {
         sumX += terr.x;
