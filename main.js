@@ -108,7 +108,7 @@ class Tribe {
     this.techLevel = 0; // primitive
     this.age = 0; // years existed
     this.settled = false;
-    this.settlementYears = 0; // years staying in same spot
+    this.settlementYears = 0; // years in same spot
     
     // Visualization
     this.color = generateColor(rng);
@@ -118,6 +118,9 @@ class Tribe {
     this.targetX = null;
     this.targetY = null;
     this.migrationCooldown = 0;
+    
+    // Leadership
+    this.leader = generateTribalLeader(rng);
   }
 }
 
@@ -166,10 +169,29 @@ function generateLeader(rng) {
     aggression: rng.next(),
     diplomacy: rng.next(),
     ambition: rng.next(),
-    caution: rng.next()
+    caution: rng.next(),
+    freedom: rng.next(),
+    rationality: rng.next()
   };
   
   return new Leader(firstName + title, traits);
+}
+
+function generateTribalLeader(rng) {
+  const tribalNames = ['Atok', 'Bram', 'Crag', 'Durn', 'Eron', 'Fenn', 'Grok', 'Hrok', 'Jarn', 'Korg', 'Loth', 'Murn', 'Norg', 'Olf', 'Rok', 'Skar', 'Thok', 'Ulf', 'Vorn', 'Wrek'];
+  const name = tribalNames[Math.floor(rng.next() * tribalNames.length)];
+  
+  // Generate personality with more variety
+  const traits = {
+    aggression: rng.next(),      // 0-1: peaceful to warlike
+    diplomacy: rng.next(),        // 0-1: hostile to friendly
+    ambition: rng.next(),         // 0-1: content to expansionist
+    caution: rng.next(),          // 0-1: reckless to cautious
+    freedom: rng.next(),          // 0-1: authoritarian to libertarian
+    rationality: rng.next()       // 0-1: emotional to logical
+  };
+  
+  return new Leader(name, traits);
 }
 
 function generateCultureName(rng) {
@@ -765,20 +787,22 @@ function simulateTick(tiles) {
         tribe.migrationCooldown--;
         tribe.settlementYears++;
         
-        // After 50 years in same spot, consider settling
-        if (tribe.settlementYears > 50 && currentTile.habitability > 0.5 && tribe.population > 150) {
+        // After 20-40 years in same spot (reduced from 50), consider settling
+        const settlementThreshold = 20 + (tribe.leader.traits.caution * 20); // 20-40 years based on caution
+        
+        if (tribe.settlementYears > settlementThreshold && currentTile.habitability > 0.4 && tribe.population > 100) {
           tribe.settled = true;
           
           // Tech advancement from settling
           tribe.techLevel = 1; // Agriculture discovered
           
-          // Chance to form proto-state
-          if (worldRng.next() < 0.3) {
-            formProtoState(tribe, tiles);
+          logEvent('settlement', `${tribe.culture} tribe has settled under ${tribe.leader.name}.`);
+          
+          // Ambitious leaders more likely to form proto-states
+          if (tribe.leader.traits.ambition > 0.7 && worldRng.next() < 0.4) {
+            formCivilization(tribe, tiles);
             gameState.tribes.splice(i, 1);
             continue;
-          } else {
-            logEvent('settlement', `${tribe.culture} tribe has settled.`);
           }
         }
       } else {
@@ -786,16 +810,28 @@ function simulateTick(tiles) {
         migrateTribe(tribe, tiles);
       }
     } else {
-      // Settled tribes can expand territory
-      if (tribe.age % 10 === 0 && tribe.population > 200) {
-        expandTerritory(tribe, tiles, 'tribe');
+      // Settled tribes can expand territory based on population and resources
+      if (tribe.age % 5 === 0 && tribe.population > 150) {
+        const tile = getTileAt(tiles, tribe.x, tribe.y);
+        
+        // Calculate expansion chance based on resources and population
+        const resourceScore = (tile.foodPotential + tile.wood + tile.fertility) / 3;
+        const populationScore = Math.min(1, tribe.population / 500);
+        const expansionChance = (resourceScore * 0.5 + populationScore * 0.3 + tribe.leader.traits.ambition * 0.2);
+        
+        if (worldRng.next() < expansionChance) {
+          expandTerritory(tribe, tiles, 'tribe');
+        }
       }
       
-      // Settled tribes might form countries
-      if (tribe.territories.length > 3 && tribe.population > 300 && worldRng.next() < 0.05) {
-        formProtoState(tribe, tiles);
-        gameState.tribes.splice(i, 1);
-        continue;
+      // Settled tribes might form countries (less often, more criteria)
+      if (tribe.territories.length > 5 && tribe.population > 400 && tribe.age > 50) {
+        const formationChance = tribe.leader.traits.ambition * 0.03;
+        if (worldRng.next() < formationChance) {
+          formCivilization(tribe, tiles);
+          gameState.tribes.splice(i, 1);
+          continue;
+        }
       }
     }
     
@@ -879,6 +915,13 @@ function migrateTribe(tribe, tiles) {
       
       if (!tile.isLand) continue;
       
+      // Check if already occupied by another tribe
+      const isOccupied = gameState.tribes.some(t => 
+        t.id !== tribe.id && t.territories.some(terr => terr.x === nx && terr.y === ny)
+      );
+      
+      if (isOccupied) continue; // Can't spawn in occupied territory
+      
       // Score this tile
       let score = tile.habitability * 100;
       
@@ -905,26 +948,42 @@ function migrateTribe(tribe, tiles) {
   // Sort by score
   neighbors.sort((a, b) => b.score - a.score);
   
-  // Pick from top choices with some randomness
-  const choice = neighbors[Math.floor(worldRng.next() * Math.min(3, neighbors.length))];
+  // Leader personality affects choice
+  let choice;
+  
+  // REALLY TINY chance (2%) of making a terrible decision (low rationality leaders)
+  if (tribe.leader.traits.rationality < 0.3 && worldRng.next() < 0.02) {
+    // Pick one of the WORST options 😂
+    const worstIndex = Math.max(0, neighbors.length - 1 - Math.floor(worldRng.next() * 3));
+    choice = neighbors[worstIndex];
+    
+    if (worldRng.next() < 0.3) {
+      logEvent('migration', `${tribe.culture} tribe made a questionable decision under ${tribe.leader.name}...`);
+    }
+  } else {
+    // Normal behavior: pick from top choices with some randomness
+    const rationality = tribe.leader.traits.rationality;
+    const topChoices = Math.max(1, Math.floor((1 - rationality) * 5) + 1); // Less rational = more random
+    choice = neighbors[Math.floor(worldRng.next() * Math.min(topChoices, neighbors.length))];
+  }
   
   // Move tribe
   tribe.x = choice.x;
   tribe.y = choice.y;
   tribe.territories = [{ x: choice.x, y: choice.y }];
-  tribe.migrationCooldown = Math.floor(worldRng.range(10, 30)); // Stay for a while
+  tribe.migrationCooldown = Math.floor(worldRng.range(15, 35)); // Stay for a while (reduced from 10-30)
   tribe.settlementYears = 0;
   
-  if (worldRng.next() < 0.1) {
+  if (worldRng.next() < 0.05) {
     logEvent('migration', `${tribe.culture} tribe migrated to new lands.`);
   }
 }
 
-function formProtoState(tribe, tiles) {
-  const countryName = tribe.culture + ' Kingdom';
+function formCivilization(tribe, tiles) {
+  const civName = tribe.culture + ' Civilization';
   const country = new Country(
-    gameState.countries.length,
-    countryName,
+    Date.now() + Math.random(), // Unique ID
+    civName,
     tribe.x,
     tribe.y,
     tribe.color,
@@ -934,10 +993,11 @@ function formProtoState(tribe, tiles) {
   country.population = tribe.population;
   country.territories = [...tribe.territories];
   country.techLevel = tribe.techLevel;
-  country.government = 'chiefdom';
+  country.government = 'tribal_confederation';
+  country.leader = tribe.leader; // Transfer the leader
   
   gameState.countries.push(country);
-  logEvent('country_formed', `${countryName} has been founded!`);
+  logEvent('civilization', `${civName} has formed under ${tribe.leader.name}!`);
 }
 
 function expandTerritory(entity, tiles, entityType) {
@@ -1082,11 +1142,14 @@ function resolveWar(attacker, defender, tiles) {
 }
 
 function splitTribe(tribe, tiles) {
+  // Limit total number of tribes
+  if (gameState.tribes.length >= 600) return;
+  
   const newPopulation = Math.floor(tribe.population * 0.4);
   tribe.population -= newPopulation;
   
   const newTribe = new Tribe(
-    gameState.tribes.length,
+    Date.now() + Math.random(), // Use unique ID
     tribe.x,
     tribe.y,
     newPopulation,
@@ -1751,12 +1814,20 @@ function showTribeInfo(tribe) {
   title.textContent = `${tribe.culture} Tribe`;
   
   content.innerHTML = `
+    <div class="info-row"><span class="info-label">Leader:</span><span class="info-value">${tribe.leader.name}</span></div>
     <div class="info-row"><span class="info-label">Population:</span><span class="info-value">${tribe.population}</span></div>
     <div class="info-row"><span class="info-label">Age:</span><span class="info-value">${tribe.age} years</span></div>
     <div class="info-row"><span class="info-label">Tech Level:</span><span class="info-value">${tribe.techLevel}</span></div>
     <div class="info-row"><span class="info-label">Status:</span><span class="info-value">${tribe.settled ? 'Settled' : 'Nomadic'}</span></div>
     <div class="info-row"><span class="info-label">Territories:</span><span class="info-value">${tribe.territories.length}</span></div>
     <div class="info-row"><span class="info-label">Location:</span><span class="info-value">(${tribe.x}, ${tribe.y})</span></div>
+    <h4 style="color: var(--accent); margin-top: 12px; margin-bottom: 6px;">Leader Traits</h4>
+    <div class="info-row"><span class="info-label">Aggression:</span><span class="info-value">${(tribe.leader.traits.aggression * 100).toFixed(0)}%</span></div>
+    <div class="info-row"><span class="info-label">Diplomacy:</span><span class="info-value">${(tribe.leader.traits.diplomacy * 100).toFixed(0)}%</span></div>
+    <div class="info-row"><span class="info-label">Ambition:</span><span class="info-value">${(tribe.leader.traits.ambition * 100).toFixed(0)}%</span></div>
+    <div class="info-row"><span class="info-label">Caution:</span><span class="info-value">${(tribe.leader.traits.caution * 100).toFixed(0)}%</span></div>
+    <div class="info-row"><span class="info-label">Freedom:</span><span class="info-value">${(tribe.leader.traits.freedom * 100).toFixed(0)}%</span></div>
+    <div class="info-row"><span class="info-label">Rationality:</span><span class="info-value">${(tribe.leader.traits.rationality * 100).toFixed(0)}%</span></div>
   `;
   
   panel.style.display = 'block';
@@ -1785,6 +1856,8 @@ function showCountryInfo(country) {
     <div class="info-row"><span class="info-label">Diplomacy:</span><span class="info-value">${(country.leader.traits.diplomacy * 100).toFixed(0)}%</span></div>
     <div class="info-row"><span class="info-label">Ambition:</span><span class="info-value">${(country.leader.traits.ambition * 100).toFixed(0)}%</span></div>
     <div class="info-row"><span class="info-label">Caution:</span><span class="info-value">${(country.leader.traits.caution * 100).toFixed(0)}%</span></div>
+    <div class="info-row"><span class="info-label">Freedom:</span><span class="info-value">${((country.leader.traits.freedom || 0.5) * 100).toFixed(0)}%</span></div>
+    <div class="info-row"><span class="info-label">Rationality:</span><span class="info-value">${((country.leader.traits.rationality || 0.5) * 100).toFixed(0)}%</span></div>
   `;
   
   panel.style.display = 'block';
