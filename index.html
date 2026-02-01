@@ -49,15 +49,15 @@
         </div>
       </div>
       <div class="ui-top-right">
-        <button class="settings-btn" id="settingsBtn">⚙</button>
+        <button class="settings-btn" id="settingsBtn" aria-label="Settings">⚙</button>
       </div>
       <div class="ui-bottom">
         <div class="time-controls">
-          <button class="time-btn" data-speed="0" title="Pause">⏸</button>
-          <button class="time-btn" data-speed="1" title="Slow">▶</button>
-          <button class="time-btn active" data-speed="2" title="Normal">▶▶</button>
-          <button class="time-btn" data-speed="3" title="Fast">▶▶▶</button>
-          <button class="time-btn" data-speed="4" title="Ultra">▶▶▶▶</button>
+          <button class="time-btn" data-speed="0" title="Pause" aria-label="Pause">⏸</button>
+          <button class="time-btn" data-speed="1" title="Slow" aria-label="Slow">▶</button>
+          <button class="time-btn active" data-speed="2" title="Normal" aria-label="Normal">▶▶</button>
+          <button class="time-btn" data-speed="3" title="Fast" aria-label="Fast">▶▶▶</button>
+          <button class="time-btn" data-speed="4" title="Ultra" aria-label="Ultra">▶▶▶▶</button>
         </div>
       </div>
       <div class="ui-bottom-right">
@@ -69,7 +69,7 @@
       <div id="infoPanel" class="info-panel" style="display: none;">
         <div class="info-panel-header">
           <span id="infoPanelTitle">Information</span>
-          <button id="closeInfoPanel" class="close-info-btn">×</button>
+          <button id="closeInfoPanel" class="close-info-btn" aria-label="Close">×</button>
         </div>
         <div id="infoPanelContent" class="info-panel-content"></div>
       </div>
@@ -77,10 +77,31 @@
     <div id="settingsPanel" style="display: none;">
       <div class="settings-content">
         <h3>SETTINGS</h3>
+        <div class="setting-item">
+          <input type="checkbox" id="godModeToggle" />
+          <label for="godModeToggle">God Mode</label>
+        </div>
+        <div class="setting-item">
+          <input type="checkbox" id="showDebugToggle" />
+          <label for="showDebugToggle">Debug Info</label>
+        </div>
+        <button class="close-btn" id="saveWorldBtn">SAVE WORLD</button>
+        <button class="close-btn" id="loadWorldBtn">LOAD WORLD</button>
         <button class="close-btn" id="closeSettings">CLOSE</button>
       </div>
     </div>
+    <div id="endgameOverlay" style="display: none;">
+      <div class="endgame-content">
+        <h1 class="endgame-title">The world has ended.</h1>
+        <p class="endgame-subtitle">Humanity is extinct.</p>
+        <div id="endgameStats" class="endgame-stats"></div>
+        <div class="endgame-buttons">
+          <button class="menu-btn" id="returnToMenuBtn">RETURN TO MENU</button>
+          <button class="menu-btn" id="exportHistoryBtn">EXPORT HISTORY</button>
+        </div>
+      </div>
+    </div>
   </div>
-  <script src="main.js"></script>
+  <script type="module" src="main.js"></script>
 </body>
 </html>
